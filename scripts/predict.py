@@ -176,41 +176,39 @@ st.title("Health-Sphere: Disease Prediction & Health Monitoring")
 
 # Sidebar for user options
 st.sidebar.title("Options")
-menu = st.sidebar.radio("Menu", ["HEALTH ANALYSIS ON FILE-DATA", "HEALTH ANALYSIS ON GOOGLE-FIT DATA",])
+st.sidebar.subheader("Filter Predictions by Date")
+start_date = st.sidebar.date_input("Start Date", datetime(2024, 10, 1))
+end_date = st.sidebar.date_input("End Date", datetime(2024, 11, 16))
 
-if menu == "HEALTH ANALYSIS ON FILE-DATA":
-    st.subheader("Upload Your Health Data")
-    uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
-    
-    if uploaded_file is not None:
-        input_data = pd.read_csv(uploaded_file)
+# Convert to datetime64[ns] for comparison
+start_date = pd.to_datetime(start_date)
+end_date = pd.to_datetime(end_date)
+
+if start_date > end_date:
+    st.error("Start date must be before end date.")
+else:
+    try:
+        synthetic_data = pd.read_csv("../user_data/google-fit-data-venkata-karthik-sai.csv")
+        synthetic_data["Date"] = pd.to_datetime(synthetic_data["Date"])  # Ensure 'Date' column is datetime
+        filtered_data = synthetic_data[(synthetic_data["Date"] >= start_date) & (synthetic_data["Date"] <= end_date)]
         
-        try:
-            # Ensure the file contains a 'Date' column
-            if 'Date' not in input_data.columns:
-                raise ValueError("The uploaded file must contain a 'Date' column.")
+        if filtered_data.empty:
+            st.warning("No data available for the selected date range.")
+        else:
+            st.subheader("User Data")
+            st.dataframe(filtered_data)
 
-            # Convert the 'Date' column to datetime
-            input_data['Date'] = pd.to_datetime(input_data['Date'])
-            
-            # Determine the next date for prediction
-            latest_date = input_data['Date'].max()
-            next_date = latest_date + pd.Timedelta(days=1)
+            # Future Prediction
+            next_date = end_date + pd.Timedelta(days=1)
+            median_row = filtered_data.median(numeric_only=True)
+            median_row['Date'] = next_date
+            next_day_data = pd.DataFrame([median_row])
 
-            # Use the last row's data (excluding 'Date') for prediction
-            latest_data = input_data.loc[input_data['Date'] == latest_date].iloc[0]
-            latest_data = latest_data.drop(labels='Date')
-
-            # Create a new DataFrame for the next day's prediction
-            next_day_data = latest_data.to_frame().T
-            next_day_data['Date'] = next_date
-
-            # Predict disease for the next day
-            predictions = predict_disease(next_day_data, model_artifacts, disease_mappings)
-
+            # Predict for the next day
+            next_day_predictions = predict_disease(next_day_data, model_artifacts, disease_mappings)
             st.subheader(f"Predictions for {next_date.strftime('%Y-%m-%d')}")
-            for idx, pred in enumerate(predictions):
-                st.write(f"Prediction {idx + 1}:")
+            for idx, pred in enumerate(next_day_predictions):
+                st.write(f"Future Prediction {idx + 1}:")
                 st.write(f"- **Disease**: {pred['Disease']}")
                 st.write(f"- **Focus On**: {pred['Focus On']}")
                 st.write(f"- **Recommendations**: {pred['Recommendations']}")
@@ -219,66 +217,14 @@ if menu == "HEALTH ANALYSIS ON FILE-DATA":
 
             st.subheader("Data Visualizations")
             st.write("### Time Series Plots")
-            for feature in input_data.columns:
+            for feature in filtered_data.columns:
                 if feature != 'Date':
-                    plot_time_series(input_data, feature, f'Time Series of {feature}')
+                    plot_time_series(filtered_data, feature, f'Time Series of {feature}')
 
             st.write("### Feature Distributions")
-            for feature in input_data.columns:
+            for feature in filtered_data.columns:
                 if feature != 'Date':
-                    plot_distribution(input_data, feature, f'Distribution of {feature}')
+                    plot_distribution(filtered_data, feature, f'Distribution of {feature}')
 
-        except Exception as e:
-            st.error(f"Error: {e}")
-
-elif menu == "HEALTH ANALYSIS ON GOOGLE-FIT DATA":
-    st.subheader("Filter Predictions by Date")
-    start_date = st.date_input("Start Date", datetime(2024, 10, 1))
-    end_date = st.date_input("End Date", datetime(2024, 11, 16))
-    
-    # Convert to datetime64[ns] for comparison
-    start_date = pd.to_datetime(start_date)
-    end_date = pd.to_datetime(end_date)
-
-    if start_date > end_date:
-        st.error("Start date must be before end date.")
-    else:
-        try:
-            synthetic_data = pd.read_csv("../user_data/google-fit-data-venkata-karthik-sai.csv")
-            synthetic_data["Date"] = pd.to_datetime(synthetic_data["Date"])  # Ensure 'Date' column is datetime
-            filtered_data = synthetic_data[(synthetic_data["Date"] >= start_date) & (synthetic_data["Date"] <= end_date)]
-            
-            if filtered_data.empty:
-                st.warning("No data available for the selected date range.")
-            else:
-                # Future Prediction
-                next_date = end_date + pd.Timedelta(days=1)
-                median_row = filtered_data.median(numeric_only=True)
-                median_row['Date'] = next_date
-                next_day_data = pd.DataFrame([median_row])
-
-                # Predict for the next day
-                next_day_predictions = predict_disease(next_day_data, model_artifacts, disease_mappings)
-                st.subheader(f"Predictions for {next_date.strftime('%Y-%m-%d')}")
-                for idx, pred in enumerate(next_day_predictions):
-                    st.write(f"Future Prediction {idx + 1}:")
-                    st.write(f"- **Disease**: {pred['Disease']}")
-                    st.write(f"- **Focus On**: {pred['Focus On']}")
-                    st.write(f"- **Recommendations**: {pred['Recommendations']}")
-                    st.write(f"- **Probability**: {pred['Probability']:.2f}")
-                    st.write("---")
-
-                st.subheader("Data Visualizations")
-                st.write("### Time Series Plots")
-                for feature in filtered_data.columns:
-                    if feature != 'Date':
-                        plot_time_series(filtered_data, feature, f'Time Series of {feature}')
-
-                st.write("### Feature Distributions")
-                for feature in filtered_data.columns:
-                    if feature != 'Date':
-                        plot_distribution(filtered_data, feature, f'Distribution of {feature}')
-
-
-        except Exception as e:
-            st.error(f"Error: {e}")
+    except Exception as e:
+        st.error(f"Error: {e}")
